@@ -52,6 +52,7 @@ th, td {
   border: 1px solid #ccc;
   padding: 6px 10px;
   white-space: nowrap;
+  text-align: center;
 }
 
 button.action {
@@ -82,6 +83,16 @@ select {
   overflow-x: auto;
   width: 100%;
 }
+
+input[type="checkbox"] {
+  transform: scale(1.2);
+}
+
+#selectedCount {
+  display: inline-block;
+  margin-left: 10px;
+  font-weight: bold;
+}
 </style>
 </head>
 
@@ -98,6 +109,7 @@ select {
   <select id="courseSelect" onchange="loadStudents()">
     <option value="">載入中...</option>
   </select>
+  <span id="selectedCount">（已勾選 0 筆）</span>
 
   <br><br>
 
@@ -237,20 +249,33 @@ async function loadStudents() {
     if (!studentData.length) {
       document.getElementById("studentTable").innerHTML = "⚠ 無資料";
       progress.innerText = "⚠ 查無學生資料";
+      updateSelectedCount();
       return;
     }
 
+    const [headers, ...rows] = studentData;
+
     let html = "<table><tr>";
-    studentData[0].forEach(h => html += "<th>" + escapeHtml(h) + "</th>");
+    html += "<th><input type='checkbox' id='checkAll' onclick='toggleAll(this)'></th>";
+    html += "<th>編號</th>";
+    headers.forEach(h => html += "<th>" + escapeHtml(h) + "</th>");
     html += "</tr>";
 
-    studentData.slice(1).forEach(r => {
-      html += "<tr>" + r.map(c => "<td>" + escapeHtml(c) + "</td>").join("") + "</tr>";
+    rows.forEach((row, i) => {
+      html += "<tr>";
+      html += `<td><input type="checkbox" class="row-check" data-index="${i + 1}" onchange="updateSelectedCount()"></td>`;
+      html += `<td>${i + 1}</td>`;
+      row.forEach(cell => {
+        html += "<td>" + escapeHtml(cell) + "</td>";
+      });
+      html += "</tr>";
     });
 
     html += "</table>";
+
     document.getElementById("studentTable").innerHTML = html;
-    progress.innerText = `✅ 已載入 ${studentData.length - 1} 位學生`;
+    progress.innerText = `✅ 已載入 ${rows.length} 位學生`;
+    updateSelectedCount();
 
   } catch (err) {
     console.error("loadStudents 錯誤：", err);
@@ -258,19 +283,56 @@ async function loadStudents() {
   }
 }
 
-/************** 發信 **************/
+function toggleAll(master) {
+  const boxes = document.querySelectorAll(".row-check");
+  boxes.forEach(box => box.checked = master.checked);
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const checkedCount = document.querySelectorAll(".row-check:checked").length;
+  document.getElementById("selectedCount").innerText = `（已勾選 ${checkedCount} 筆）`;
+
+  const allBoxes = document.querySelectorAll(".row-check");
+  const master = document.getElementById("checkAll");
+
+  if (master) {
+    if (allBoxes.length === 0) {
+      master.checked = false;
+      master.indeterminate = false;
+    } else if (checkedCount === 0) {
+      master.checked = false;
+      master.indeterminate = false;
+    } else if (checkedCount === allBoxes.length) {
+      master.checked = true;
+      master.indeterminate = false;
+    } else {
+      master.checked = false;
+      master.indeterminate = true;
+    }
+  }
+}
+
+/************** 發信：只寄勾選者 **************/
 async function sendEmails(mode) {
   if (studentData.length <= 1) {
     alert("請先選擇課程");
     return;
   }
 
+  const checkedBoxes = Array.from(document.querySelectorAll(".row-check:checked"));
+  if (checkedBoxes.length === 0) {
+    alert("請先勾選要寄信的學生");
+    return;
+  }
+
   const progress = document.getElementById("progress");
 
-  for (let i = 1; i < studentData.length; i++) {
-    progress.innerText = `📨 發送中 ${i}/${studentData.length - 1}`;
+  for (let i = 0; i < checkedBoxes.length; i++) {
+    progress.innerText = `📨 發送中 ${i + 1}/${checkedBoxes.length}`;
 
-    const row = studentData[i];
+    const rowIndex = Number(checkedBoxes[i].dataset.index);
+    const row = studentData[rowIndex];
     const obj = {};
 
     studentData[0].forEach((h, j) => obj[h] = row[j]);
@@ -278,12 +340,12 @@ async function sendEmails(mode) {
     try {
       await callApi("sendSingleEmail", { rowObj: obj, mode });
     } catch (err) {
-      progress.innerText = `❌ 第 ${i} 封發送失敗：\n` + err.message;
+      progress.innerText = `❌ 第 ${i + 1} 封發送失敗：\n` + err.message;
       return;
     }
   }
 
-  progress.innerText = "✅ 發送完成";
+  progress.innerText = `✅ 已完成發送 ${checkedBoxes.length} 封信件`;
 }
 
 /************** 查詢選單 **************/
@@ -334,7 +396,6 @@ async function loadFiltered() {
 
     items.forEach(r => {
       if (r[9] === "出席") attend++;
-
       html += "<tr>" + r.map(c => "<td>" + escapeHtml(c) + "</td>").join("") + "</tr>";
     });
 
