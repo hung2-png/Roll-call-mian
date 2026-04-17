@@ -173,7 +173,6 @@ function callApi(action, data = {}) {
     });
 
     const url = GAS_URL + "?" + params.toString();
-    console.log("JSONP URL:", url);
 
     const script = document.createElement("script");
 
@@ -186,17 +185,13 @@ function callApi(action, data = {}) {
         }
       } finally {
         delete window[callbackName];
-        if (script.parentNode) {
-          script.parentNode.removeChild(script);
-        }
+        if (script.parentNode) script.parentNode.removeChild(script);
       }
     };
 
     script.onerror = function() {
       delete window[callbackName];
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
+      if (script.parentNode) script.parentNode.removeChild(script);
       reject(new Error("JSONP 載入失敗"));
     };
 
@@ -225,9 +220,7 @@ async function loadCourseNames() {
     });
 
     progress.innerText = `✅ 已載入 ${items.length} 門課程`;
-
   } catch (err) {
-    console.error("loadCourseNames 錯誤：", err);
     select.innerHTML = "<option value=''>課程載入失敗</option>";
     progress.innerText = "❌ 課程無法載入：\n" + err.message;
   }
@@ -276,9 +269,7 @@ async function loadStudents() {
     document.getElementById("studentTable").innerHTML = html;
     progress.innerText = `✅ 已載入 ${rows.length} 位學生`;
     updateSelectedCount();
-
   } catch (err) {
-    console.error("loadStudents 錯誤：", err);
     progress.innerText = "❌ 載入學生失敗：\n" + err.message;
   }
 }
@@ -365,9 +356,7 @@ async function loadOptions() {
       op.text = v;
       select.appendChild(op);
     });
-
   } catch (err) {
-    console.error("loadOptions 錯誤：", err);
     select.innerHTML = "<option value=''>載入失敗</option>";
     document.getElementById("summary").innerText = "❌ 查詢選單載入失敗：" + err.message;
   }
@@ -404,9 +393,7 @@ async function loadFiltered() {
     document.getElementById("queryTable").innerHTML = html;
     document.getElementById("summary").innerText =
       `應到 ${total} 人，已到 ${attend} 人，未到 ${total - attend} 人`;
-
   } catch (err) {
-    console.error("loadFiltered 錯誤：", err);
     document.getElementById("queryTable").innerHTML = "❌ 查詢失敗";
     document.getElementById("summary").innerText = err.message;
   }
