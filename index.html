@@ -3,7 +3,360 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>岡中 QR 點名系統</title><!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>岡中 QR 點名系統</title>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  text-align: center;
+}
+
+#nav {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+#nav button {
+  padding: 10px 20px;
+  border: none;
+  cursor: pointer;
+  border-radius: 8px;
+  background: #eee;
+}
+
+#nav .active {
+  background: #42a5f5;
+  color: white;
+}
+
+.tab {
+  display: none;
+}
+
+.active-tab {
+  display: block;
+}
+
+table {
+  border-collapse: collapse;
+  margin: 20px auto;
+  max-width: 100%;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+button.action {
+  background: #42a5f5;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button.action:hover {
+  background: #1e88e5;
+}
+
+#progress {
+  margin-top: 10px;
+  font-weight: bold;
+  white-space: pre-line;
+}
+
+select {
+  font-size: 16px;
+  padding: 6px 10px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  width: 100%;
+}
+</style>
+</head>
+
+<body>
+
+<div id="nav">
+  <button id="btn-send" class="active" onclick="showTab('send', this)">📤 發信</button>
+  <button id="btn-query" onclick="showTab('query', this)">📊 查詢</button>
+</div>
+
+<div id="tab-send" class="tab active-tab">
+  <h3>📤 發送點名信</h3>
+
+  <select id="courseSelect" onchange="loadStudents()">
+    <option value="">載入中...</option>
+  </select>
+
+  <br><br>
+
+  <button class="action" onclick="sendEmails('test')">發測試信</button>
+  <button class="action" onclick="sendEmails('student')">發正式信</button>
+
+  <div id="progress"></div>
+
+  <div class="table-wrap">
+    <div id="studentTable"></div>
+  </div>
+</div>
+
+<div id="tab-query" class="tab">
+  <h3>📊 查詢出缺席</h3>
+
+  <select id="filterSelect" onchange="loadFiltered()">
+    <option value="">載入中...</option>
+  </select>
+
+  <br><br>
+
+  <div id="summary"></div>
+
+  <div class="table-wrap">
+    <div id="queryTable"></div>
+  </div>
+</div>
+
+<script>
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzjYAa1a2pL4sNtRmqayPKQfhLvEK0l21Qd5LJuhQvSeYFXwvgGMWr5i14HN24xiNF7/exec";
+
+let studentData = [];
+
+/************** UI **************/
+function showTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active-tab'));
+  document.getElementById('tab-' + name).classList.add('active-tab');
+
+  document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+/************** API：改成 GET **************/
+async function callApi(action, data = {}) {
+  const params = new URLSearchParams();
+  params.set("action", action);
+  params.set("mode", "api");
+
+  Object.entries(data).forEach(([key, value]) => {
+    if (typeof value === "object") {
+      params.set(key, JSON.stringify(value));
+    } else if (value !== undefined && value !== null) {
+      params.set(key, value);
+    }
+  });
+
+  const url = GAS_URL + "?" + params.toString();
+  console.log("API URL:", url);
+
+  const response = await fetch(url, { method: "GET" });
+  const text = await response.text();
+  console.log("API 原始回傳：", text);
+
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (err) {
+    throw new Error("API 沒有回傳合法 JSON：" + text);
+  }
+
+  if (json.status !== "success") {
+    throw new Error(json.message || "API 執行失敗");
+  }
+
+  return json;
+}
+
+/************** 載入課程 **************/
+async function loadCourseNames() {
+  const select = document.getElementById("courseSelect");
+  const progress = document.getElementById("progress");
+  select.innerHTML = "<option value=''>載入中...</option>";
+
+  try {
+    const res = await callApi("getCourseNames");
+    const items = res.data.items || [];
+
+    select.innerHTML = "<option value=''>請選擇課程</option>";
+
+    items.forEach(name => {
+      const op = document.createElement("option");
+      op.value = name;
+      op.text = name;
+      select.appendChild(op);
+    });
+
+    progress.innerText = `✅ 已載入 ${items.length} 門課程`;
+
+  } catch (err) {
+    console.error("loadCourseNames 錯誤：", err);
+    select.innerHTML = "<option value=''>課程載入失敗</option>";
+    progress.innerText = "❌ 課程無法載入：\n" + err.message;
+  }
+}
+
+/************** 載入學生 **************/
+async function loadStudents() {
+  const course = document.getElementById("courseSelect").value;
+  if (!course) return;
+
+  const progress = document.getElementById("progress");
+
+  try {
+    progress.innerText = "資料載入中...";
+
+    const res = await callApi("getStudentsByCourse", { courseName: course });
+    studentData = res.data.items || [];
+
+    if (!studentData.length) {
+      document.getElementById("studentTable").innerHTML = "⚠ 無資料";
+      progress.innerText = "⚠ 查無學生資料";
+      return;
+    }
+
+    let html = "<table><tr>";
+    studentData[0].forEach(h => html += "<th>" + escapeHtml(h) + "</th>");
+    html += "</tr>";
+
+    studentData.slice(1).forEach(r => {
+      html += "<tr>" + r.map(c => "<td>" + escapeHtml(c) + "</td>").join("") + "</tr>";
+    });
+
+    html += "</table>";
+    document.getElementById("studentTable").innerHTML = html;
+    progress.innerText = `✅ 已載入 ${studentData.length - 1} 位學生`;
+
+  } catch (err) {
+    console.error("loadStudents 錯誤：", err);
+    progress.innerText = "❌ 載入學生失敗：\n" + err.message;
+  }
+}
+
+/************** 發信 **************/
+async function sendEmails(mode) {
+  if (studentData.length <= 1) {
+    alert("請先選擇課程");
+    return;
+  }
+
+  const progress = document.getElementById("progress");
+
+  for (let i = 1; i < studentData.length; i++) {
+    progress.innerText = `📨 發送中 ${i}/${studentData.length - 1}`;
+
+    const row = studentData[i];
+    const obj = {};
+
+    studentData[0].forEach((h, j) => obj[h] = row[j]);
+
+    try {
+      await callApi("sendSingleEmail", { rowObj: obj, mode });
+    } catch (err) {
+      progress.innerText = `❌ 第 ${i} 封發送失敗：\n` + err.message;
+      return;
+    }
+  }
+
+  progress.innerText = "✅ 發送完成";
+}
+
+/************** 查詢選單 **************/
+async function loadOptions() {
+  const select = document.getElementById("filterSelect");
+  select.innerHTML = "<option value=''>載入中...</option>";
+
+  try {
+    const res = await callApi("getCourseDateOptions");
+    const items = res.data.items || [];
+
+    select.innerHTML = "<option value=''>請選擇</option>";
+
+    items.forEach(v => {
+      const op = document.createElement("option");
+      op.value = v;
+      op.text = v;
+      select.appendChild(op);
+    });
+
+  } catch (err) {
+    console.error("loadOptions 錯誤：", err);
+    select.innerHTML = "<option value=''>載入失敗</option>";
+    document.getElementById("summary").innerText = "❌ 查詢選單載入失敗：" + err.message;
+  }
+}
+
+/************** 查詢資料 **************/
+async function loadFiltered() {
+  const val = document.getElementById("filterSelect").value;
+  if (!val) return;
+
+  try {
+    const res = await callApi("getFilteredData", { option: val });
+    const items = res.data.items || [];
+
+    if (!items.length) {
+      document.getElementById("queryTable").innerHTML = "⚠ 無資料";
+      document.getElementById("summary").innerText = "";
+      return;
+    }
+
+    let html = "<table>";
+    html += "<tr><th>班級</th><th>座號</th><th>學號</th><th>姓名</th><th>選課名稱</th><th>科目名稱</th><th>日期</th><th>星期</th><th>節次</th><th>是否出席</th><th>備註</th></tr>";
+
+    let total = items.length;
+    let attend = 0;
+
+    items.forEach(r => {
+      if (r[9] === "出席") attend++;
+
+      html += "<tr>" + r.map(c => "<td>" + escapeHtml(c) + "</td>").join("") + "</tr>";
+    });
+
+    html += "</table>";
+
+    document.getElementById("queryTable").innerHTML = html;
+    document.getElementById("summary").innerText =
+      `應到 ${total} 人，已到 ${attend} 人，未到 ${total - attend} 人`;
+
+  } catch (err) {
+    console.error("loadFiltered 錯誤：", err);
+    document.getElementById("queryTable").innerHTML = "❌ 查詢失敗";
+    document.getElementById("summary").innerText = err.message;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/************** 初始化 **************/
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadCourseNames();
+  await loadOptions();
+});
+</script>
+
+</body>
+</html>
 
 <style>
 body {
