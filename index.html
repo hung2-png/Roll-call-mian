@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>岡中 QR 點名系統</title>
+
+<style>
+body { font-family: Arial; margin:0; padding:20px; text-align:center; }
+#nav { display:flex; justify-content:center; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+#nav button { padding:10px 20px; border:none; cursor:pointer; border-radius:8px; }
+#nav .active { background:#42a5f5; color:white; }
+
+.tab { display:none; }
+.active-tab { display:block; }
+
+table { border-collapse: collapse; margin:auto; }
+th, td { border:1px solid #ccc; padding:6px 10px; }
+
+button.action {
+  background:#42a5f5;
+  color:white;
+  border:none;
+  padding:8px 15px;
+  border-radius:6px;
+  cursor:pointer;
+}
+button.action:hover { background:#1e88e5; }
+
+#progress { margin-top:10px; font-weight:bold; }
+</style>
+</head>
+
+<body>
+
+<div id="nav">
+  <button onclick="showTab('send')" class="active">📤 發信</button>
+  <button onclick="showTab('query')">📊 查詢</button>
+</div>
+
+<!-- 發信 -->
+<div id="tab-send" class="tab active-tab">
+  <h3>📤 發送點名信</h3>
+
+  <select id="courseSelect" onchange="loadStudents()">
+    <option>載入中...</option>
+  </select>
+
+  <br><br>
+
+  <button class="action" onclick="sendEmails('test')">發測試信</button>
+  <button class="action" onclick="sendEmails('student')">發正式信</button>
+
+  <div id="progress"></div>
+  <br>
+  <div id="studentTable"></div>
+</div>
+
+<!-- 查詢 -->
+<div id="tab-query" class="tab">
+  <h3>📊 查詢出缺席</h3>
+
+  <select id="filterSelect" onchange="loadFiltered()">
+    <option>載入中...</option>
+  </select>
+
+  <br><br>
+
+  <div id="summary"></div>
+  <div id="queryTable"></div>
+</div>
+
+<script>
+
+/********************************************************
+ * 已填入你的 GAS API
+ ********************************************************/
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzjYAa1a2pL4sNtRmqayPKQfhLvEK0l21Qd5LJuhQvSeYFXwvgGMWr5i14HN24xiNF7/exec";
+
+let studentData = [];
+
+/************** UI **************/
+function showTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active-tab'));
+  document.getElementById('tab-'+name).classList.add('active-tab');
+
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+/************** API **************/
+async function callApi(action,data={}){
+  const res = await fetch(GAS_URL,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json"},
+    body:JSON.stringify({action,...data})
+  });
+  return await res.json();
+}
+
+/************** 載入課程 **************/
+async function loadCourseNames(){
+  const res = await callApi("getCourseNames");
+
+  const select=document.getElementById("courseSelect");
+  select.innerHTML="<option>請選擇課程</option>";
+
+  res.data.items.forEach(n=>{
+    const op=document.createElement("option");
+    op.value=n;
+    op.text=n;
+    select.appendChild(op);
+  });
+}
+
+/************** 載入學生 **************/
+async function loadStudents(){
+  const course=document.getElementById("courseSelect").value;
+  if(!course) return;
+
+  const res=await callApi("getStudentsByCourse",{courseName:course});
+  studentData=res.data.items;
+
+  let html="<table><tr>";
+  studentData[0].forEach(h=>html+="<th>"+h+"</th>");
+  html+="</tr>";
+
+  studentData.slice(1).forEach(r=>{
+    html+="<tr>"+r.map(c=>"<td>"+c+"</td>").join("")+"</tr>";
+  });
+
+  html+="</table>";
+  document.getElementById("studentTable").innerHTML=html;
+}
+
+/************** 發信 **************/
+async function sendEmails(mode){
+  if(studentData.length<=1){
+    alert("請先選擇課程");
+    return;
+  }
+
+  const progress=document.getElementById("progress");
+
+  for(let i=1;i<studentData.length;i++){
+    progress.innerText=`發送中 ${i}/${studentData.length-1}`;
+
+    let row=studentData[i];
+    let obj={};
+
+    studentData[0].forEach((h,j)=>obj[h]=row[j]);
+
+    await callApi("sendSingleEmail",{rowObj:obj,mode});
+  }
+
+  progress.innerText="✅ 發送完成";
+}
+
+/************** 查詢 **************/
+async function loadOptions(){
+  const res=await callApi("getCourseDateOptions");
+
+  const select=document.getElementById("filterSelect");
+  select.innerHTML="<option>請選擇</option>";
+
+  res.data.items.forEach(v=>{
+    const op=document.createElement("option");
+    op.value=v;
+    op.text=v;
+    select.appendChild(op);
+  });
+}
+
+async function loadFiltered(){
+  const val=document.getElementById("filterSelect").value;
+  if(!val) return;
+
+  const res=await callApi("getFilteredData",{option:val});
+
+  let html="<table>";
+  let total=res.data.items.length;
+  let attend=0;
+
+  res.data.items.forEach(r=>{
+    if(r[9]==="出席") attend++;
+
+    html+="<tr>"+r.map(c=>"<td>"+c+"</td>").join("")+"</tr>";
+  });
+
+  html+="</table>";
+
+  document.getElementById("queryTable").innerHTML=html;
+  document.getElementById("summary").innerText=
+    `應到 ${total} 人，已到 ${attend} 人，未到 ${total-attend} 人`;
+}
+
+/************** 初始化 **************/
+loadCourseNames();
+loadOptions();
+
+</script>
+</body>
+</html>
