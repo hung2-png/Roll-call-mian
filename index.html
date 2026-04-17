@@ -1,419 +1,180 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>岡中 QR 點名系統</title>
-
-<style>
-body {
-  font-family: Arial, sans-serif;
-  margin: 0;
-  padding: 20px;
-  text-align: center;
-}
-
-#nav {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-
-#nav button {
-  padding: 10px 20px;
-  border: none;
-  cursor: pointer;
-  border-radius: 8px;
-  background: #eee;
-}
-
-#nav .active {
-  background: #42a5f5;
-  color: white;
-}
-
-.tab {
-  display: none;
-}
-
-.active-tab {
-  display: block;
-}
-
-table {
-  border-collapse: collapse;
-  margin: 20px auto;
-  max-width: 100%;
-}
-
-th, td {
-  border: 1px solid #ccc;
-  padding: 6px 10px;
-  white-space: nowrap;
-  text-align: center;
-}
-
-button.action {
-  background: #42a5f5;
-  color: white;
-  border: none;
-  padding: 8px 15px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-button.action:hover {
-  background: #1e88e5;
-}
-
-#progress {
-  margin-top: 10px;
-  font-weight: bold;
-  white-space: pre-line;
-}
-
-select {
-  font-size: 16px;
-  padding: 6px 10px;
-}
-
-.table-wrap {
-  overflow-x: auto;
-  width: 100%;
-}
-
-input[type="checkbox"] {
-  transform: scale(1.2);
-}
-
-#selectedCount {
-  display: inline-block;
-  margin-left: 10px;
-  font-weight: bold;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>課程簽到管理系統</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; background-color: #f8f9fa; }
+        .nav-tabs { margin-bottom: 20px; }
+        .loading { display: none; color: #0d6efd; font-weight: bold; }
+        .stats-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    </style>
 </head>
-
 <body>
+    <div class="container">
+        <h2 class="mb-4">學校課程簽到系統</h2>
+        <span id="loading" class="loading">處理中...請稍候</span>
 
-<div id="nav">
-  <button id="btn-send" class="active" onclick="showTab('send', this)">📤 發信</button>
-  <button id="btn-query" onclick="showTab('query', this)">📊 查詢</button>
-</div>
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#sendTab">發信功能</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#queryTab" onclick="loadQueryOptions()">查詢出缺席</button></li>
+        </ul>
 
-<div id="tab-send" class="tab active-tab">
-  <h3>📤 發送點名信</h3>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="sendTab">
+                <div class="row g-3 mb-3 align-items-center">
+                    <div class="col-auto"><label class="form-label">選擇課程：</label></div>
+                    <div class="col-auto"><select id="courseSelect" class="form-select" onchange="loadStudents()"></select></div>
+                    <div class="col-auto"><input type="date" id="mailDate" class="form-control"></div>
+                    <div class="col-auto"><input type="number" id="mailPeriod" class="form-control" placeholder="節次" min="1" max="9" value="1"></div>
+                </div>
+                <div class="mb-2">
+                    <button class="btn btn-warning" onclick="sendEmails('test')">發送測試信 (寄給自己)</button>
+                    <button class="btn btn-primary" onclick="sendEmails('student')">發送正式信 (寄給學生)</button>
+                    <span class="ms-3">已勾選 <b id="checkedCount">0</b> 筆</span>
+                </div>
+                <table class="table table-bordered bg-white">
+                    <thead class="table-light">
+                        <tr>
+                            <th><input type="checkbox" id="selectAll" onclick="toggleAll(this)"></th>
+                            <th>班級</th><th>座號</th><th>學號</th><th>姓名</th><th>科目</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentTableBody"></tbody>
+                </table>
+            </div>
 
-  <select id="courseSelect" onchange="loadStudents()">
-    <option value="">載入中...</option>
-  </select>
-  <span id="selectedCount">（已勾選 0 筆）</span>
+            <div class="tab-pane fade" id="queryTab">
+                <select id="querySelect" class="form-select mb-3" onchange="loadCheckinData()"></select>
+                <div id="statsArea" class="stats-card row text-center d-none">
+                    <div class="col">應到：<span id="statTotal" class="fw-bold">0</span></div>
+                    <div class="col">已到：<span id="statPresent" class="fw-bold text-success">0</span></div>
+                    <div class="col">未到：<span id="statAbsent" class="fw-bold text-danger">0</span></div>
+                </div>
+                <table class="table table-striped bg-white">
+                    <thead class="table-dark">
+                        <tr><th>班級</th><th>座號</th><th>學號</th><th>姓名</th><th>日期</th><th>節次</th><th>狀態</th><th>備註</th></tr>
+                    </thead>
+                    <tbody id="queryTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
-  <br><br>
+    <script>
+        const GAS_URL = 'https://script.google.com/macros/s/你的部署ID/exec'; // 請替換成你的 GAS Web App URL
+        let studentDataList = [];
 
-  <button class="action" onclick="sendEmails('test')">發測試信</button>
-  <button class="action" onclick="sendEmails('student')">發正式信</button>
-
-  <div id="progress"></div>
-
-  <div class="table-wrap">
-    <div id="studentTable"></div>
-  </div>
-</div>
-
-<div id="tab-query" class="tab">
-  <h3>📊 查詢出缺席</h3>
-
-  <select id="filterSelect" onchange="loadFiltered()">
-    <option value="">載入中...</option>
-  </select>
-
-  <br><br>
-
-  <div id="summary"></div>
-
-  <div class="table-wrap">
-    <div id="queryTable"></div>
-  </div>
-</div>
-
-<script>
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzjYAa1a2pL4sNtRmqayPKQfhLvEK0l21Qd5LJuhQvSeYFXwvgGMWr5i14HN24xiNF7/exec";
-
-let studentData = [];
-
-/************** UI **************/
-function showTab(name, btn) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active-tab'));
-  document.getElementById('tab-' + name).classList.add('active-tab');
-
-  document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-}
-
-/************** JSONP API **************/
-function callApi(action, data = {}) {
-  return new Promise((resolve, reject) => {
-    const callbackName = "cb_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
-
-    const params = new URLSearchParams({
-      action,
-      mode: "api",
-      callback: callbackName
-    });
-
-    Object.entries(data).forEach(([k, v]) => {
-      if (typeof v === "object") {
-        params.append(k, JSON.stringify(v));
-      } else if (v !== undefined && v !== null) {
-        params.append(k, v);
-      }
-    });
-
-    const url = GAS_URL + "?" + params.toString();
-
-    const script = document.createElement("script");
-
-    window[callbackName] = function(res) {
-      try {
-        if (!res || res.status !== "success") {
-          reject(new Error((res && res.message) || "API 執行失敗"));
-        } else {
-          resolve(res);
+        function callGAS(params, callback) {
+            document.getElementById('loading').style.display = 'inline';
+            const callbackName = 'jsonp_' + Date.now();
+            window[callbackName] = function(data) {
+                document.getElementById('loading').style.display = 'none';
+                callback(data);
+                delete window[callbackName];
+                document.body.removeChild(script);
+            };
+            const script = document.createElement('script');
+            const queryString = Object.keys(params).map(key => key + '=' + encodeURIComponent(params[key])).join('&');
+            script.src = `${GAS_URL}?callback=${callbackName}&${queryString}`;
+            document.body.appendChild(script);
         }
-      } finally {
-        delete window[callbackName];
-        if (script.parentNode) script.parentNode.removeChild(script);
-      }
-    };
 
-    script.onerror = function() {
-      delete window[callbackName];
-      if (script.parentNode) script.parentNode.removeChild(script);
-      reject(new Error("JSONP 載入失敗"));
-    };
+        // 初始化：載入課程清單
+        window.onload = () => {
+            document.getElementById('mailDate').valueAsDate = new Date();
+            callGAS({ action: 'getCourseNames' }, res => {
+                const select = document.getElementById('courseSelect');
+                select.innerHTML = '<option value="">請選擇課程</option>';
+                res.data.forEach(name => select.innerHTML += `<option value="${name}">${name}</option>`);
+            });
+        };
 
-    script.src = url;
-    document.body.appendChild(script);
-  });
-}
+        function loadStudents() {
+            const courseName = document.getElementById('courseSelect').value;
+            if (!courseName) return;
+            callGAS({ action: 'getStudentsByCourse', courseName: courseName }, res => {
+                studentDataList = res.data;
+                const tbody = document.getElementById('studentTableBody');
+                tbody.innerHTML = studentDataList.map((s, idx) => `
+                    <tr>
+                        <td><input type="checkbox" class="stu-check" data-idx="${idx}" onclick="updateCount()"></td>
+                        <td>${s.class}</td><td>${s.seat}</td><td>${s.id}</td><td>${s.name}</td><td>${s.subject}</td>
+                    </tr>
+                `).join('');
+                updateCount();
+            });
+        }
 
-/************** 載入課程 **************/
-async function loadCourseNames() {
-  const select = document.getElementById("courseSelect");
-  const progress = document.getElementById("progress");
-  select.innerHTML = "<option value=''>載入中...</option>";
+        function toggleAll(el) {
+            document.querySelectorAll('.stu-check').forEach(cb => cb.checked = el.checked);
+            updateCount();
+        }
 
-  try {
-    const res = await callApi("getCourseNames");
-    const items = res.data.items || [];
+        function updateCount() {
+            const count = document.querySelectorAll('.stu-check:checked').length;
+            document.getElementById('checkedCount').innerText = count;
+        }
 
-    select.innerHTML = "<option value=''>請選擇課程</option>";
+        async function sendEmails(mode) {
+            const date = document.getElementById('mailDate').value;
+            const period = document.getElementById('mailPeriod').value;
+            const checkedCbs = document.querySelectorAll('.stu-check:checked');
+            
+            if (checkedCbs.length === 0) return alert('請先勾選學生');
+            if (!confirm(`確定要以 ${mode === 'test' ? '測試模式' : '正式模式'} 寄送 ${checkedCbs.length} 封信？`)) return;
 
-    items.forEach(name => {
-      const op = document.createElement("option");
-      op.value = name;
-      op.text = name;
-      select.appendChild(op);
-    });
+            for (let cb of checkedCbs) {
+                const idx = cb.getAttribute('data-idx');
+                const student = studentDataList[idx];
+                await new Promise(resolve => {
+                    callGAS({
+                        action: 'sendSingleEmail',
+                        mode: mode,
+                        date: date.replace(/-/g, '/'),
+                        period: period,
+                        studentData: JSON.stringify(student)
+                    }, res => {
+                        console.log(`Sent to ${student.name}:`, res);
+                        resolve();
+                    });
+                });
+            }
+            alert('寄送任務完成！');
+        }
 
-    progress.innerText = `✅ 已載入 ${items.length} 門課程`;
-  } catch (err) {
-    select.innerHTML = "<option value=''>課程載入失敗</option>";
-    progress.innerText = "❌ 課程無法載入：\n" + err.message;
-  }
-}
+        function loadQueryOptions() {
+            callGAS({ action: 'getCourseDateOptions' }, res => {
+                const select = document.getElementById('querySelect');
+                select.innerHTML = '<option value="">請選擇簽到紀錄</option>';
+                res.data.forEach(opt => select.innerHTML += `<option value="${opt}">${opt}</option>`);
+            });
+        }
 
-/************** 載入學生 **************/
-async function loadStudents() {
-  const course = document.getElementById("courseSelect").value;
-  if (!course) return;
-
-  const progress = document.getElementById("progress");
-
-  try {
-    progress.innerText = "資料載入中...";
-
-    const res = await callApi("getStudentsByCourse", { courseName: course });
-    studentData = res.data.items || [];
-
-    if (!studentData.length) {
-      document.getElementById("studentTable").innerHTML = "⚠ 無資料";
-      progress.innerText = "⚠ 查無學生資料";
-      updateSelectedCount();
-      return;
-    }
-
-    const [headers, ...rows] = studentData;
-
-    let html = "<table><tr>";
-    html += "<th><input type='checkbox' id='checkAll' onclick='toggleAll(this)'></th>";
-    html += "<th>編號</th>";
-    headers.forEach(h => html += "<th>" + escapeHtml(h) + "</th>");
-    html += "</tr>";
-
-    rows.forEach((row, i) => {
-      html += "<tr>";
-      html += `<td><input type="checkbox" class="row-check" data-index="${i + 1}" onchange="updateSelectedCount()"></td>`;
-      html += `<td>${i + 1}</td>`;
-      row.forEach(cell => {
-        html += "<td>" + escapeHtml(cell) + "</td>";
-      });
-      html += "</tr>";
-    });
-
-    html += "</table>";
-
-    document.getElementById("studentTable").innerHTML = html;
-    progress.innerText = `✅ 已載入 ${rows.length} 位學生`;
-    updateSelectedCount();
-  } catch (err) {
-    progress.innerText = "❌ 載入學生失敗：\n" + err.message;
-  }
-}
-
-function toggleAll(master) {
-  const boxes = document.querySelectorAll(".row-check");
-  boxes.forEach(box => box.checked = master.checked);
-  updateSelectedCount();
-}
-
-function updateSelectedCount() {
-  const checkedCount = document.querySelectorAll(".row-check:checked").length;
-  document.getElementById("selectedCount").innerText = `（已勾選 ${checkedCount} 筆）`;
-
-  const allBoxes = document.querySelectorAll(".row-check");
-  const master = document.getElementById("checkAll");
-
-  if (master) {
-    if (allBoxes.length === 0) {
-      master.checked = false;
-      master.indeterminate = false;
-    } else if (checkedCount === 0) {
-      master.checked = false;
-      master.indeterminate = false;
-    } else if (checkedCount === allBoxes.length) {
-      master.checked = true;
-      master.indeterminate = false;
-    } else {
-      master.checked = false;
-      master.indeterminate = true;
-    }
-  }
-}
-
-/************** 發信：只寄勾選者 **************/
-async function sendEmails(mode) {
-  if (studentData.length <= 1) {
-    alert("請先選擇課程");
-    return;
-  }
-
-  const checkedBoxes = Array.from(document.querySelectorAll(".row-check:checked"));
-  if (checkedBoxes.length === 0) {
-    alert("請先勾選要寄信的學生");
-    return;
-  }
-
-  const progress = document.getElementById("progress");
-
-  for (let i = 0; i < checkedBoxes.length; i++) {
-    progress.innerText = `📨 發送中 ${i + 1}/${checkedBoxes.length}`;
-
-    const rowIndex = Number(checkedBoxes[i].dataset.index);
-    const row = studentData[rowIndex];
-    const obj = {};
-
-    studentData[0].forEach((h, j) => obj[h] = row[j]);
-
-    try {
-      await callApi("sendSingleEmail", { rowObj: obj, mode });
-    } catch (err) {
-      progress.innerText = `❌ 第 ${i + 1} 封發送失敗：\n` + err.message;
-      return;
-    }
-  }
-
-  progress.innerText = `✅ 已完成發送 ${checkedBoxes.length} 封信件`;
-}
-
-/************** 查詢選單 **************/
-async function loadOptions() {
-  const select = document.getElementById("filterSelect");
-  select.innerHTML = "<option value=''>載入中...</option>";
-
-  try {
-    const res = await callApi("getCourseDateOptions");
-    const items = res.data.items || [];
-
-    select.innerHTML = "<option value=''>請選擇</option>";
-
-    items.forEach(v => {
-      const op = document.createElement("option");
-      op.value = v;
-      op.text = v;
-      select.appendChild(op);
-    });
-  } catch (err) {
-    select.innerHTML = "<option value=''>載入失敗</option>";
-    document.getElementById("summary").innerText = "❌ 查詢選單載入失敗：" + err.message;
-  }
-}
-
-/************** 查詢資料 **************/
-async function loadFiltered() {
-  const val = document.getElementById("filterSelect").value;
-  if (!val) return;
-
-  try {
-    const res = await callApi("getFilteredData", { option: val });
-    const items = res.data.items || [];
-
-    if (!items.length) {
-      document.getElementById("queryTable").innerHTML = "⚠ 無資料";
-      document.getElementById("summary").innerText = "";
-      return;
-    }
-
-    let html = "<table>";
-    html += "<tr><th>班級</th><th>座號</th><th>學號</th><th>姓名</th><th>選課名稱</th><th>科目名稱</th><th>日期</th><th>星期</th><th>節次</th><th>是否出席</th><th>備註</th></tr>";
-
-    let total = items.length;
-    let attend = 0;
-
-    items.forEach(r => {
-      if (r[9] === "出席") attend++;
-      html += "<tr>" + r.map(c => "<td>" + escapeHtml(c) + "</td>").join("") + "</tr>";
-    });
-
-    html += "</table>";
-
-    document.getElementById("queryTable").innerHTML = html;
-    document.getElementById("summary").innerText =
-      `應到 ${total} 人，已到 ${attend} 人，未到 ${total - attend} 人`;
-  } catch (err) {
-    document.getElementById("queryTable").innerHTML = "❌ 查詢失敗";
-    document.getElementById("summary").innerText = err.message;
-  }
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/************** 初始化 **************/
-document.addEventListener("DOMContentLoaded", async () => {
-  await loadCourseNames();
-  await loadOptions();
-});
-</script>
-
+        function loadCheckinData() {
+            const opt = document.getElementById('querySelect').value;
+            if (!opt) return;
+            callGAS({ action: 'getFilteredData', optionKey: opt }, res => {
+                const tbody = document.getElementById('queryTableBody');
+                let present = 0;
+                tbody.innerHTML = res.data.map(r => {
+                    if (r[11] === '出席') present++;
+                    return `<tr>
+                        <td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td>
+                        <td>${r[8]}</td><td>${r[10]}</td>
+                        <td class="${r[11] === '出席' ? 'text-success fw-bold' : 'text-danger'}">${r[11]}</td>
+                        <td>${r[12] || ''}</td>
+                    </tr>`;
+                }).join('');
+                document.getElementById('statsArea').classList.remove('d-none');
+                document.getElementById('statTotal').innerText = res.data.length;
+                document.getElementById('statPresent').innerText = present;
+                document.getElementById('statAbsent').innerText = res.data.length - present;
+            });
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
